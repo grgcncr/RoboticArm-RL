@@ -1,7 +1,7 @@
 import numpy as np
 import gym
 from gym import spaces
-from envs.gym_environment_interface import GymEnvironmentInterface
+from gym_environment_interface import GymEnvironmentInterface
 
 class SimpleGridEnv(gym.Env, GymEnvironmentInterface):
     def __init__(self):
