@@ -91,8 +91,8 @@ static_camera_prim = stage.GetPrimAtPath(static_path)
 if not arm_camera_prim.IsValid() or not static_camera_prim.IsValid():
     print("Camera prim(s) not valid!")
 
-arm_rp = rep.create.render_product(arm_path, resolution=(1280, 960))
-static_rp = rep.create.render_product(static_path, resolution=(1280, 960))
+arm_rp = rep.create.render_product(arm_path, resolution=(640, 480))
+static_rp = rep.create.render_product(static_path, resolution=(640, 480))
 
 writer = rep.WriterRegistry.get("BasicWriter")
 
@@ -101,6 +101,23 @@ output_dir.mkdir(exist_ok=True)
 
 writer.initialize(output_dir=str(output_dir), rgb=True)
 app = omni.kit.app.get_app()
+
+# import threading
+# import queue
+
+# save_queue = queue.Queue()
+
+# def save_images_worker():
+#     while True:
+#         render_products = save_queue.get()
+#         if render_products is None:
+#             break
+#         writer.attach(render_products)
+#         save_queue.task_done()
+
+# save_thread = threading.Thread(target=save_images_worker, daemon=True)
+# save_thread.start()
+
 
 def get_random_joint_velocities(scale_arm=5.0, scale_gripper=2.5):
     arm_vel = (np.random.rand(7) - 0.5) * 2 * scale_arm
@@ -122,11 +139,11 @@ def get_random_joint_positions():
     
     return np.concatenate([arm_positions, gripper])
 
-async def capture_camera_images():
-    writer.attach([arm_rp, static_rp])
-    await asyncio.sleep(0.255)
-    writer.detach()
-    print("Captured Image")
+# async def capture_camera_images():
+#     writer.attach([arm_rp, static_rp])
+#     await asyncio.sleep(0.09)
+#     writer.detach()
+#     print("Captured Image")
 
 
 capture_count = 0
@@ -160,9 +177,11 @@ while simulation_app.is_running():
             #     time.sleep(0.01)
             # writer.detach()
 
-            asyncio.ensure_future(capture_camera_images())
+            # asyncio.ensure_future(capture_camera_images())
+            # save_queue.put([arm_rp, static_rp])
             capture_count += 1
             print(f"Iteration number {capture_count}")  
             last_toggle_time = current_time
 
-
+# save_queue.put(None)
+# save_thread.join()
