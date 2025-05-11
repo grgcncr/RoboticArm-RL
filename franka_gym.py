@@ -1,3 +1,4 @@
+import asyncio
 import numpy as np
 import gym
 from gym import spaces
@@ -84,18 +85,56 @@ class FrankaGym(GymEnvironmentInterface):
             color=np.array([0, 0, 1]),
         )
     )
-    my_world.scene.add_default_ground_plane()
-    my_world.reset()
+    cube.enable_rigid_body_physics()
+
+    # my_world.scene.add_default_ground_plane()
+    # print(dir(my_world._physics_context))
+    # print(dir(my_world._physics_context))
+    # my_world._physics_context.enable_contact_collection(True)
+
+    # my_world.reset()
 
     my_franka.set_joint_positions([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05])
     my_franka.gripper.set_default_state(my_franka.gripper.joint_opened_positions)
     # my_franka.enable_rigid_body_physics()
     my_franka.gripper.enable_rigid_body_physics()
 
+
     from isaacsim.core.utils.stage import get_current_stage
-    from pxr import UsdGeom, Gf
+    from pxr import UsdGeom, Gf, Usd, UsdLux, UsdShade, Sdf, Tf, Vt, UsdPhysics, PhysxSchema
+
 
     stage = get_current_stage()
+    cube_prim = stage.GetPrimAtPath("/World/Cube")
+    franka_prim = stage.GetPrimAtPath("/World/Franka")
+    gripper_prim = stage.GetPrimAtPath("/World/Franka/panda_rightfinger")
+
+    from isaacsim.core.utils.prims import get_prim_at_path
+    from omni.physx.scripts import physicsUtils
+    
+    from omni.physx.scripts import utils
+    # print(dir(utils))
+    utils.setCollider(gripper_prim)
+    utils.setCollider(cube_prim)
+    # utils.setRigidBody(franka_prim, approximationShape="convexDecomposition", kinematic=False)
+    # utils.setRigidBody(cube_prim, approximationShape="boundingCube", kinematic=True)
+    my_world.reset()
+    
+    # from omni.physx import get_physx_interface, get_shysx_simulation_interface
+
+    # UsdPhysics.CollisionAPI.Apply(cube_prim)
+    # UsdPhysics.CollisionAPI.Apply(franka_prim)
+    # print(dir(UsdPhysics))
+    # print(dir(UsdPhysics.CollisionAPI))
+    
+    
+    
+    
+    # physicsUtils.add_rigid_xform(stage, "/World/Franka/panda_rightfinger")
+    # physicsUtils.add_collision_to_collision_group("/World/Franka/panda_rightfinger")
+
+    # physicsUtils.add_rigid_xform(stage, "/World/Cube")
+    # physicsUtils.add_collision_to_collision_group("/World/Cube")
 
     arm_path = "/World/Franka/panda_hand/arm_camera"
     arm_camera = UsdGeom.Camera.Define(stage, arm_path)
@@ -132,13 +171,45 @@ class FrankaGym(GymEnvironmentInterface):
     capture_count = 0
     toggle_interval = 3
     last_toggle_time = time.time()
-    move_by_vel = True
+    move_by_vel = False
 
-    
+    # def check_collision(self):
+    #     import omni.physx
+    #     contact_report_interface = omni.physx.get_contact_report_interface()
+    #     contacts = contact_report_interface.get_contacts()
+
+    #     for contact in contacts:
+    #         prim0 = contact.actor0
+    #         prim1 = contact.actor1
+
+    #         if not prim0 or not prim1:
+    #             continue
+
+    #         prim0_path = str(prim0.get_path())
+    #         prim1_path = str(prim1.get_path())
+
+    #         # You can adjust these based on exact paths of gripper/arm/cube
+    #         if ("/World/Franka/panda_rightfinger" in prim0_path or "/World/Franka/panda_rightfinger" in prim1_path) and "/World/Cube" in (prim0_path + prim1_path):
+    #             return True  # Collision detected
+
+    #     return False
+
+
+    def capture_images(self):
+    # Capture one image from each camera and save it
+        self.writer.attach([self.arm_rp, self.static_rp])
+        # Give time for the render to occur (depends on Isaac Sim version, often needed)
+        for _ in range(3):  # step 3 frames just to be safe
+            self.my_world.step(render=True)
+        self.writer.detach()
+
+    # from isaacsim.core import SimulationContext
+    # print(dir(isaacsim.core))
 
 
     def step(self, action):
-        """Apply an action to the robot and step simulation"""
+        import omni.physx
+
         if self.move_by_vel:
             self.my_franka.set_joint_velocities(action)
         else:
@@ -146,20 +217,107 @@ class FrankaGym(GymEnvironmentInterface):
 
         self.my_world.step(render=True)
 
-        # Capture images
-        self.writer.attach([self.arm_rp, self.static_rp])
+        self.capture_images()
 
-        # Get observations
         observation = self.get_observation()
 
-        # Compute reward
-        reward = self.calculate_reward(observation, done=False)
+        
+        # Check for collision
+        # sim_context = SimulationContext()
+        # contacts = sim_context.get_contact_report()
+    
+        collision = False
+        # for contact in contacts:
+        #     if ("/World/Franka/panda_rightfinger" in contact['body0'] and "/World/Cube" in contact['body1']) or \
+        #     ("/World/Cube" in contact['body0'] and "/World/Franka/panda_rightfinger" in contact['body1']):
+        #         collision = True
+        #         break
 
-        done = False  # Set your own terminal conditions
+        # observation = self.get_observation()
+        
+        physx_sim_interface = omni.physx.acquire_physx_simulation_interface()
+        # physx_sim_interface.set_contact_report_enabled(True)
+        # print(dir(physx_sim_interface))
+        # Retrieve contact report data
+        contact_headers, contact_data = physx_sim_interface.get_contact_report()
 
-        info = {}
+        # Define the paths to the Franka robot and the cube
+        franka_path = "/World/Franka/panda_rightfinger"
+        cube_path = "/World/Cube"
+        # Iterate through contact headers to check for collisions
+        
+
+
+        # Your handler function for contact reports
+        def on_contact_report(contacts, contact_data):
+            print(contacts,contact_data)
+            for contact in contacts:
+                print("Contact Report Received:")
+                print("  Actor0:", contact.actor0)
+                print("  Actor1:", contact.actor1)
+        
+            # Example collision check
+            if "/World/Franka/panda_rightfinger" in contact.actor0 and "/World/Cube" in contact.actor1:
+                print("Collision detected between gripper and cube!")
+
+            # Subscribe to contact reports
+        p = physx_sim_interface.subscribe_contact_report_events(on_contact_report)
+        print(p)
+
+
+        # print(f"Checking collisions between: {franka_path} and {cube_path}")
+        # print(f"Number of contact headers: {len(contact_headers)}")
+        # for header in contact_headers:
+        #     print(f"Header: actor0={header.actor0}, actor1={header.actor1}")
+
+        # print(contact_data,contact_headers)
+        # for header in contact_headers:
+        #     print("Actor0:", header.actor0)
+        #     print("Actor1:", header.actor1)
+        
+        # for header in contact_headers:
+        #     actor0 = header.actor0
+        #     actor1 = header.actor1
+
+        #     # Check if either actor is part of the Franka robot and the other is the cube
+        #     if  (actor0.startswith(franka_path) and actor1 == cube_path) or \
+        #         (actor1.startswith(franka_path) and actor0 == cube_path):
+        #         print(f"Collision detected between {actor0} and {actor1}")
+        #         # Apply reward deduction and set done flag
+        #         reward = -10
+        #         collision = True
+        #         done = True
+        #         break
+        
+        
+        if collision:
+            reward = -10.0
+            done = True
+        else:
+            reward = self.calculate_reward(observation, done=False)
+            done = False
+        # === Collision Detection ===
+        # collision_detected = False
+        # contact_pairs = self.my_world._physics_context.get_contact_pairs()
+        # for pair in contact_pairs:
+        #     prim1 = pair["body0"]
+        #     prim2 = pair["body1"]
+        #     if ("/World/Cube" in prim1 and "/World/Franka" in prim2) or ("/World/Cube" in prim2 and "/World/Franka" in prim1):
+        #         collision_detected = True
+        #         break
+
+        # === Reward & Termination Logic ===
+        # if collision_detected:
+        #     reward = -10.0
+        #     done = True
+        # else:
+        #     reward = self.calculate_reward(observation, done=False)
+        #     done = False
+
+        info = {"collision": collision}
 
         return observation, reward, done, info
+
 
     def reset(self):
         """Reset environment"""
@@ -194,11 +352,12 @@ class FrankaGym(GymEnvironmentInterface):
 
 if __name__ == "__main__":
     env = FrankaGym()
+    i=0
     try:
-        for _ in range(100):  # Run 100 steps as an example
+        for i in range(100):  # Run 100 steps as an example
             action = get_random_joint_velocities() if env.move_by_vel else get_random_joint_positions()
             obs, reward, done, info = env.step(action)
-            print(f"Reward: {reward}")
+            print(f"Reward: {reward}\nStep {i}\n{info}")
             time.sleep(0.05)  # Slow down stepping if needed
     finally:
         env.close()
