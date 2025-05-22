@@ -62,7 +62,7 @@ class GymEnvironmentInterface(ABC):
         """
         Calculate the reward received after transitioning to a new state. This method
         allows for the customization of the reward structure depending on the specifics
-        of the state transition and whether the state is terminal.
+        of the state transition ABCand whether the state is terminal.
 
         Parameters:
         new_state (object): The new state after the action is taken.
