@@ -10,7 +10,6 @@ def get_random_joint_velocities(scale_arm=5.0, scale_gripper=2.5):
     
     gripper_vel = np.random.uniform(-1, 1) * scale_gripper
     gripper = np.array([gripper_vel, gripper_vel])
-    
     return np.concatenate([arm_vel, gripper])
 
 def get_random_joint_positions():
@@ -22,7 +21,6 @@ def get_random_joint_positions():
 
     gripper_position = np.random.uniform(0.02, 0.05)
     gripper = np.array([gripper_position, gripper_position])
-    
     return np.concatenate([arm_positions, gripper])
 
 class FrankaGym(GymEnvironmentInterface):
@@ -55,21 +53,6 @@ class FrankaGym(GymEnvironmentInterface):
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
     args, unknown = parser.parse_known_args()
-
-    def print_contact(sensor_path, part):
-        from isaacsim.sensors.physics import _sensor
-        _contact_sensor_interface = _sensor.acquire_contact_sensor_interface()
-        raw_data = _contact_sensor_interface.get_contact_sensor_raw_data(sensor_path)
-        body_name = _contact_sensor_interface.decode_body_name(raw_data[0][3])
-        if raw_data.size > 0:
-            if body_name == "/World/Cube":
-                print(f"{part} in contact with: {body_name}, with impolse : {raw_data[0][6]}")
-                return True
-            else:
-                return False
-        else:
-            # print(f"{part} has no contact.")
-            return False
 
     assets_root_path = get_assets_root_path()
     if assets_root_path is None:
@@ -115,6 +98,24 @@ class FrankaGym(GymEnvironmentInterface):
     # my_world._physics_context.enable_contact_collection(True)
 
     # my_world.reset()
+    # print(dir(my_franka))
+    # print(dir(gripper))
+    def print_contact(sensor_path, part):
+        from isaacsim.sensors.physics import _sensor
+        _contact_sensor_interface = _sensor.acquire_contact_sensor_interface()
+        raw_data = _contact_sensor_interface.get_contact_sensor_raw_data(sensor_path)
+        if raw_data.size > 0:
+            body_name = _contact_sensor_interface.decode_body_name(raw_data[0][3])
+            if body_name == "/World/Cube":
+                # print(sensor.get_current_frame())
+                print(f"{part} in contact with: {body_name}, with impolse : {raw_data[0][6]}")
+                time.sleep(5.0)
+                return True
+            else:
+                return False
+        else:
+            # print(f"{part} has no contact.")
+            return False
 
     my_franka.set_joint_positions([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05])
     my_franka.gripper.set_default_state(my_franka.gripper.joint_opened_positions)
@@ -192,7 +193,7 @@ class FrankaGym(GymEnvironmentInterface):
     rfinger_sensor = ContactSensor(
         prim_path="/World/Franka/panda_rightfinger/Contact_Sensor",
         name="Contact_Sensor_r",
-        frequency=60,
+        frequency=100,
         translation=np.array([0, 0, 0]),
         min_threshold=0.1,
         max_threshold=10000000,
@@ -202,7 +203,7 @@ class FrankaGym(GymEnvironmentInterface):
     lfinger_sensor = ContactSensor(
         prim_path="/World/Franka/panda_leftfinger/Contact_Sensor",
         name="Contact_Sensor_l",
-        frequency=60,
+        frequency=100,
         translation=np.array([0, 0, 0]),
         min_threshold=0.1,
         max_threshold=10000000,
@@ -212,7 +213,7 @@ class FrankaGym(GymEnvironmentInterface):
     hand_sensor = ContactSensor(
         prim_path="/World/Franka/panda_hand/Contact_Sensor",
         name="Contact_Sensor_hand",
-        frequency=60,
+        frequency=100,
         translation=np.array([0, 0, 0]),
         min_threshold=0.1,
         max_threshold=10000000,
@@ -348,16 +349,15 @@ class FrankaGym(GymEnvironmentInterface):
 
     from isaacsim.sensors.physics import _sensor
     _contact_sensor_interface = _sensor.acquire_contact_sensor_interface()
-    from isaacsim.core.api.sensors import RigidContactView
-    print(dir(RigidContactView))
-    contact_view = RigidContactView(prim_paths_expr="/World/Franka/*", filter_paths_expr="/World/Cube")    
-    contact_view.initialize(sim_context.physics_sim_view)
+    # from isaacsim.core.api.sensors import RigidContactView
+    # print(dir(RigidContactView))
+    # contact_view = RigidContactView(prim_paths_expr="/World/Franka/*", filter_paths_expr="/World/Cube")    
+    # contact_view.initialize(sim_context.physics_sim_view)
     # print(dir(_contact_sensor_interface))
     # print(dir(hand_sensor))
-    
+    print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
     def step(self, action):
         import omni.physx
-
         if self.move_by_vel:
             self.my_franka.set_joint_velocities(action)
         else:
@@ -365,10 +365,8 @@ class FrankaGym(GymEnvironmentInterface):
 
         
 
-        self.capture_images()
-
+        # self.capture_images() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         observation = self.get_observation()
-    
         collision_r = False
         collision_l = False
         collision_hand = False
@@ -389,10 +387,11 @@ class FrankaGym(GymEnvironmentInterface):
         # from isaacsim.core.utils.physics import wake_up_prim
 
         # wake_up_prim(self.cube_prim)
-        raw_rigid_cube_data = self._contact_sensor_interface.get_rigid_body_raw_data("/World/Cube")
-        raw_data_r = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_rightfinger/Contact_Sensor")
-        raw_data_l = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_leftfinger/Contact_Sensor")
-        raw_data_hand = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_hand/Contact_Sensor")
+        # raw_rigid_cube_data = self._contact_sensor_interface.get_rigid_body_raw_data("/World/Cube")
+        # print("after cube raw")
+        # raw_data_r = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_rightfinger/Contact_Sensor")
+        # raw_data_l = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_leftfinger/Contact_Sensor")
+        # raw_data_hand = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_hand/Contact_Sensor")
         # raw_data_franka = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/Contact_Sensor")
         # reading = _contact_sensor_interface.get_sensor_reading("/World/Franka/panda_rightfinger/Contact_Sensor")
         # 200193, 29361409
@@ -411,16 +410,16 @@ class FrankaGym(GymEnvironmentInterface):
         #         # collision_r = True
         #         print(f"Franka --> cube : {impolse}")
         # print(raw_rigid_cube_data)
-        collision_r = self.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor","Right Finger")
-            
+        # print(dir(self.hand_sensor))
+        collision_r = FrankaGym.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
+        # self.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
         # print("Hand : ",self.hand_sensor.get_current_frame())
         # print("Left Finger : ",self.lfinger_sensor.get_current_frame())
         # print("Right FInger : ",self.rfinger_sensor.get_current_frame())
 
-        collision_l = self.print_contact("/World/Franka/panda_leftfinger/Contact_Sensor","Left Finger")
-        
-        collision_hand = self.print_contact("/World/Franka/panda_hand/Contact_Sensor","Panda Hand")
+        collision_l = FrankaGym.print_contact("/World/Franka/panda_leftfinger/Contact_Sensor","Left Finger")
 
+        collision_hand = FrankaGym.print_contact("/World/Franka/panda_hand/Contact_Sensor","Panda Hand")
 
         if (collision_l | collision_r | collision_hand):
             reward = -10.0
@@ -430,7 +429,7 @@ class FrankaGym(GymEnvironmentInterface):
             done = False
 
         info = {"collision": (collision_l | collision_r | collision_hand)}
-        self.my_world.step(render=True)
+        self.my_world.step(render=True)        
         return observation, reward, done, info
 
 
@@ -465,16 +464,17 @@ class FrankaGym(GymEnvironmentInterface):
     def close(self):
         self.simulation_app.close()
 
+# FrankaGym.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
 if __name__ == "__main__":
     env = FrankaGym()
     i=0
     try:
-        for i in range(500):
-            print("Repetition",i)
+        for i in range(900):
+            print("Repetition",i+1)
             action = get_random_joint_velocities() if env.move_by_vel else get_random_joint_positions()
             obs, reward, done, info = env.step(action)
             # print(f"Reward: {reward}\nStep {i}\n{info}")
             
-            time.sleep(0.05)
+            time.sleep(0.01)
     finally:
         env.close()
