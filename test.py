@@ -33,9 +33,9 @@ set_camera_view((1.5, 2.0, 1.5), (0.0, 0.0, 0.0))
 
 
 asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
-add_reference_to_stage(usd_path=asset_path, prim_path="/World/Franka")
+add_reference_to_stage(usd_path="/home/mushroomgeorge/Desktop/franka.usd", prim_path="/World")
 gripper = ParallelGripper(
-    end_effector_prim_path="/World/Franka/panda_rightfinger",
+    end_effector_prim_path="/World/franka/panda_rightfinger",
     joint_prim_names=["panda_finger_joint1", "panda_finger_joint2"],
     joint_opened_positions=np.array([0.05, 0.05]),
     joint_closed_positions=np.array([0.02, 0.02]),
@@ -43,34 +43,50 @@ gripper = ParallelGripper(
 )
 my_franka = my_world.scene.add(
     SingleManipulator(
-        prim_path="/World/Franka", name="my_franka", end_effector_prim_name="panda_rightfinger", gripper=gripper
+        prim_path="/World/franka", name="my_franka", end_effector_prim_name="panda_rightfinger", gripper=gripper
     )
 )
 
+# from isaacsim.core.utils.stage import open_stage
+# open_stage("/home/mushroomgeorge/Desktop/Cube.usd")
+
+
+
+# cube = my_world.scene.add(
+#     DynamicCuboid(
+#         name="cube",
+#         position=np.array([0.3, 0.3, 0.3]),
+#         prim_path="/World/Cube",
+#         scale=np.array([0.0515, 0.0515, 0.0515]),
+#         size=1.0,
+#         color=np.array([0, 0, 1]),
+#     )
+# )
+add_reference_to_stage(usd_path="/home/mushroomgeorge/Desktop/Cube.usd", prim_path="/World")
+from isaacsim.core.prims import XFormPrim
 cube = my_world.scene.add(
-    DynamicCuboid(
-        name="cube",
-        position=np.array([0.3, 0.3, 0.3]),
-        prim_path="/World/Cube",
-        scale=np.array([0.0515, 0.0515, 0.0515]),
-        size=1.0,
-        color=np.array([0, 0, 1]),
+    XFormPrim(
+        "/World/Cube",
+        name="cube"
     )
 )
+cube.set_local_scales(np.array([[1.3, 1.3, 1.3]]))
+cube.set_world_poses(np.array([[0.3, 0.3, 0.3]]))
+
 my_world.scene.add_default_ground_plane()
 my_world.reset()
 
-my_franka.set_joint_positions([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05])
-my_franka.gripper.set_default_state(my_franka.gripper.joint_opened_positions)
+# my_franka.set_joint_positions([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05])
+# my_franka.gripper.set_default_state(my_franka.gripper.joint_opened_positions)
 # my_franka.enable_rigid_body_physics()
-my_franka.gripper.enable_rigid_body_physics()
+# my_franka.gripper.enable_rigid_body_physics()
 
 from isaacsim.core.utils.stage import get_current_stage
 from pxr import UsdGeom, Gf
 
 stage = get_current_stage()
 
-arm_path = "/World/Franka/panda_hand/arm_camera"
+arm_path = "/World/franka/panda_hand/arm_camera"
 arm_camera = UsdGeom.Camera.Define(stage, arm_path)
 arm_camera.AddTranslateOp().Set(Gf.Vec3f(-0.011052506998599807, 0.002351993160557201, -1.6135926818935435))
 arm_camera.AddOrientOp().Set(Gf.Quatf(0.0, 0.7, 0.7, 0.0))
@@ -162,14 +178,14 @@ while simulation_app.is_running():
         current_time = time.time()
         if current_time - last_toggle_time > toggle_interval:
             # Use velocirties or positions
-            if move_by_vel:
-                my_franka.set_joint_velocities(get_random_joint_velocities())
-            else:
-                my_franka.set_joint_positions(get_random_joint_positions())
+            # if move_by_vel:
+            #     my_franka.set_joint_velocities(get_random_joint_velocities())
+            # else:
+            #     my_franka.set_joint_positions(get_random_joint_positions())
             
-            print("Franka joints position : ",my_franka.get_joint_positions(),"\n" )
-            print("Gripper position : ",my_franka.gripper.get_joint_positions(),"\n")
-            print("Cube position : ",cube.get_local_pose()[0],"\n")
+            # print("Franka joints position : ",my_franka.get_joint_positions(),"\n" )
+            # print("Gripper position : ",my_franka.gripper.get_joint_positions(),"\n")
+            # print("Cube position : ",cube.get_local_poses()[0],"\n")
             
             # writer.attach([arm_rp, static_rp])
             # for _ in range(2):  # Frames

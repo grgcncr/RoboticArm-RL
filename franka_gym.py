@@ -1,480 +1,342 @@
-import asyncio
+import argparse
+
+from isaaclab.app import AppLauncher
+
+# add argparse arguments
+parser = argparse.ArgumentParser(description="Tutorial on adding sensors on a robot.")
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
+# append AppLauncher cli args
+AppLauncher.add_app_launcher_args(parser)
+# parse the arguments
+args_cli = parser.parse_args()
+
+# launch omniverse app
+app_launcher = AppLauncher(args_cli)
+simulation_app = app_launcher.app
+
+"""Rest everything follows."""
+
+import torch
+import isaaclab.sim as sim_utils
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, patterns
+from isaaclab.utils import configclass
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+from isaaclab.assets import RigidObject, RigidObjectCfg
 import numpy as np
-import gym
-from gym import spaces
-from envs.gym_environment_interface import GymEnvironmentInterface
 import time
+import os
+from pathlib import Path
+import imageio.v2 as imageio
+from envs.gym_environment_interface import GymEnvironmentInterface
+import isaaclab.sim as sim_utils
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, patterns
+from isaaclab.utils import configclass
 
-def get_random_joint_velocities(scale_arm=5.0, scale_gripper=2.5):
-    arm_vel = (np.random.rand(7) - 0.5) * 2 * scale_arm
+@configclass
+class SceneCfg(InteractiveSceneCfg):
+    """Design the scene with sensors on the robot."""
+
+    # ground plane
+    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
+
+    # lights
+    dome_light = AssetBaseCfg(
+        prim_path="/World/Light", spawn=sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
+    )
+
+    FRANKA_PANDA_CFG = ArticulationCfg(
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/FrankaEmika/panda_instanceable.usd",
+            activate_contact_sensors=True,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=False,
+                max_depenetration_velocity=5.0,
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=0
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
+        ),
+        init_state=ArticulationCfg.InitialStateCfg(
+            joint_pos={
+                "panda_joint1": 0.0,
+                "panda_joint2": -0.569,
+                "panda_joint3": 0.0,
+                "panda_joint4": -2.810,
+                "panda_joint5": 0.0,
+                "panda_joint6": 3.037,
+                "panda_joint7": 0.741,
+                "panda_finger_joint.*": 0.04,
+            },# prev start pos (0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05)
+        ),
+        actuators={
+            "panda_shoulder": ImplicitActuatorCfg(
+                joint_names_expr=["panda_joint[1-4]"],
+                effort_limit=87.0,
+                velocity_limit=2.175,
+                stiffness=80.0,
+                damping=4.0,
+            ),
+            "panda_forearm": ImplicitActuatorCfg(
+                joint_names_expr=["panda_joint[5-7]"],
+                effort_limit=12.0,
+                velocity_limit=2.61,
+                stiffness=80.0,
+                damping=4.0,
+            ),
+            "panda_hand": ImplicitActuatorCfg(
+                joint_names_expr=["panda_finger_joint.*"],
+                effort_limit=200.0,
+                velocity_limit=0.2,
+                stiffness=2e3,
+                damping=1e2,
+            ),
+        },
+        soft_joint_pos_limit_factor=1.0,
+        prim_path = "{ENV_REGEX_NS}/Franka",
+    )
+
+    robot: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Franka")
     
-    gripper_vel = np.random.uniform(-1, 1) * scale_gripper
-    gripper = np.array([gripper_vel, gripper_vel])
-    return np.concatenate([arm_vel, gripper])
+    cube = RigidObjectCfg(
+        prim_path="/World/Cube",
+        spawn=sim_utils.CuboidCfg(
+            size=(0.05, 0.05, 0.05),  # 5cm cube
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=1.5),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001,rest_offset=0.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.8, 0.2, 0.2),
+                metallic=0.2
+            ),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.5, 0.0, 0.025), 
+            rot=(1.0, 0.0, 0.0, 0.0),
+        ),
+    )
 
-def get_random_joint_positions():
-    # Joint limits for Franka arm (in radians)
-    joint_limits_lower = np.array([-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973])
-    joint_limits_upper = np.array([ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973])
+    hand_camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Franka/panda_hand/hand_camera",
+        update_period=0.1,
+        height=480,
+        width=640,
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0,
+            focus_distance=400.0,
+            horizontal_aperture=20.955,
+            clipping_range=(0.05, 10.0),
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, 0.0, -0.7), 
+            rot=(0.70711, 0.0, 0.0, 0.70711),  # (x,w,z,y))!!
+            convention="ros",
+        ),
+    )
 
-    arm_positions = np.random.uniform(joint_limits_lower, joint_limits_upper)
+    side_camera = CameraCfg(
+        prim_path="/World/side_camera",  
+        update_period=0.1,
+        height=480,
+        width=640,
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0,
+            focus_distance=400.0,
+            horizontal_aperture=20.955,
+            clipping_range=(0.1, 100.0),
+        ),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, 3.5, 0.5),  
+            rot=(0.0, 0.0, 0.70711, -0.70711), 
+        ),
+    )
 
-    gripper_position = np.random.uniform(0.02, 0.05)
-    gripper = np.array([gripper_position, gripper_position])
-    return np.concatenate([arm_positions, gripper])
+    
+    contact_sensor = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Franka/.*",
+        filter_prim_paths_expr=["/World/Cube"],
+        update_period=0.0,
+        history_length=6,
+        debug_vis=True
+    )
 
 class FrankaGym(GymEnvironmentInterface):
-
-    from isaacsim import SimulationApp
-
-    simulation_app = SimulationApp({"headless": False})
-
-    from isaacsim.core.api.simulation_context import SimulationContext
-
-    # Start simulation context
-    
-
-    import argparse
-    import sys
-    import carb
-    import numpy as np
-    import asyncio
-    from isaacsim.core.api import World
-    from isaacsim.core.api.objects import DynamicCuboid
-    from isaacsim.core.utils.stage import add_reference_to_stage
-    from isaacsim.robot.manipulators import SingleManipulator
-    from isaacsim.robot.manipulators.grippers import ParallelGripper
-    from isaacsim.storage.native import get_assets_root_path
-    from isaacsim.core.utils.viewports import set_camera_view
-    from isaacsim.core.api.physics_context import PhysicsContext
-    from isaaclab.sensors import ContactSensorCfg
-    
-    PhysicsContext()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--test", default=False, action="store_true", help="Run in test mode")
-    args, unknown = parser.parse_known_args()
-
-    assets_root_path = get_assets_root_path()
-    if assets_root_path is None:
-        carb.log_error("Could not find Isaac Sim assets folder")
-        simulation_app.close()
-        sys.exit()
-
-    my_world = World(stage_units_in_meters=1.0)
-    # print(dir(my_world.stage))
-    my_world.scene.add_default_ground_plane()
-    set_camera_view((1.5, 2.0, 1.5), (0.0, 0.0, 0.0))
-    sim_context = SimulationContext()
-
-    asset_path = assets_root_path + "/Isaac/Robots/Franka/franka_alt_fingers.usd"
-    add_reference_to_stage(usd_path=asset_path, prim_path="/World/Franka")
-    gripper = ParallelGripper(
-        end_effector_prim_path="/World/Franka/panda_rightfinger",
-        joint_prim_names=["panda_finger_joint1", "panda_finger_joint2"],
-        joint_opened_positions=np.array([0.05, 0.05]),
-        joint_closed_positions=np.array([0.02, 0.02]),
-        action_deltas=np.array([0.01, 0.01]),
-    )
-    my_franka = my_world.scene.add(
-        SingleManipulator(
-            prim_path="/World/Franka", name="my_franka", end_effector_prim_name="panda_rightfinger", gripper=gripper
-        )
-    )
-
-    cube = my_world.scene.add(
-        DynamicCuboid(
-            name="cube",
-            position=np.array([0.3, 0.3, 0.3]),
-            prim_path="/World/Cube",
-            scale=np.array([0.0515, 0.0515, 0.0515]),
-            size=1.0,
-            color=np.array([0, 0, 7]),
-        )
-    )
-    # cube.enable_rigid_body_physics()
-
-    # my_world.scene.add_default_ground_plane()
-    # print(dir(my_world._physics_context))
-    # my_world._physics_context.enable_contact_collection(True)
-
-    # my_world.reset()
-    # print(dir(my_franka))
-    # print(dir(gripper))
-    def print_contact(sensor_path, part):
-        from isaacsim.sensors.physics import _sensor
-        _contact_sensor_interface = _sensor.acquire_contact_sensor_interface()
-        raw_data = _contact_sensor_interface.get_contact_sensor_raw_data(sensor_path)
-        if raw_data.size > 0:
-            body_name = _contact_sensor_interface.decode_body_name(raw_data[0][3])
-            if body_name == "/World/Cube":
-                # print(sensor.get_current_frame())
-                print(f"{part} in contact with: {body_name}, with impolse : {raw_data[0][6]}")
-                time.sleep(5.0)
-                return True
-            else:
-                return False
-        else:
-            # print(f"{part} has no contact.")
-            return False
-
-    my_franka.set_joint_positions([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05])
-    my_franka.gripper.set_default_state(my_franka.gripper.joint_opened_positions)
-    # my_franka.enable_rigid_body_physics()
-    # my_franka.gripper.enable_rigid_body_physics()
-
-
-    from isaacsim.core.utils.stage import get_current_stage
-    from pxr import UsdGeom, Gf, Usd, UsdLux, UsdShade, Sdf, Tf, Vt, UsdPhysics, PhysxSchema
-
-    stage = get_current_stage()
-    cube_prim = stage.GetPrimAtPath("/World/Cube")
-    franka_prim = stage.GetPrimAtPath("/World/Franka")
-    rfinger_prim = stage.GetPrimAtPath("/World/Franka/panda_rightfinger")
-    lfinger_prim = stage.GetPrimAtPath("/World/Franka/panda_leftfinger")
-    hand_prim = stage.GetPrimAtPath("/World/Franka/panda_hand")
-    
-    scene = UsdPhysics.Scene.Define(stage, "/physicsScene")
-    scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
-    scene.CreateGravityMagnitudeAttr().Set(981.0)
-    
-
-    # import omni.kit.commands
-
-    # # Set convex decomposition for articulated links
-    # omni.kit.commands.execute("ChangeColliderApproximationCommand",
-    #     approximationShape="convexDecomposition",
-    #     primPaths=["/World/Franka/panda_hand", 
-    #            "/World/Franka/panda_leftfinger", 
-    #            "/World/Franka/panda_rightfinger"]
-    # )
-
-
-    from isaacsim.core.utils.prims import get_prim_at_path
-    from omni.physx.scripts import physicsUtils
-    
-    from omni.physx.scripts import utils
-    # # print(dir(utils))
-    # utils.setCollider(lfinger_prim)
-    # # utils.setRigidBody(gripper_prim, approximationShape="convexHull", kinematic=True)
-    # utils.setCollider(cube_prim)
-    # utils.setRigidBody(cube_prim, approximationShape="boundingCube", kinematic=False)
-    mass_api = UsdPhysics.MassAPI.Apply(cube_prim)
-    mass_api.CreateMassAttr(1.0)
-    rigid_cube = UsdPhysics.RigidBodyAPI.Apply(cube_prim)
-    rigid_cube.CreateRigidBodyEnabledAttr(True)
-    rigid_cube.CreateKinematicEnabledAttr(False)
-    # utils.setCollider(rfinger_prim)
-    # utils.setCollider(hand_prim)
-    
-    from isaacsim.sensors.physics import ContactSensor
-    import numpy as np
-
-    # cube_sensor = ContactSensor(
-    #     prim_path="/World/Cube/Contact_Sensor",
-    #     name="Contact_Sensor_cube",
-    #     frequency=30,
-    #     translation=np.array([0, 0, 0]),
-    #     min_threshold=0,
-    #     max_threshold=10000000,
-    #     radius=-1
-    # )
-
-    # set_collision_approximation(hand_prim)
-    # set_collision_approximation(lfinger_prim)
-    # set_collision_approximation(rfinger_prim) 
-
-    # franka_csensor = ContactSensorCfg(
-    #     prim_path="/World/Franka", update_period=0.0, history_length=6, debug_vis=True
-    # )
-    
-    # print(dir(utils.setCollider(hand_prim)))
-
-    
-    rfinger_sensor = ContactSensor(
-        prim_path="/World/Franka/panda_rightfinger/Contact_Sensor",
-        name="Contact_Sensor_r",
-        frequency=100,
-        translation=np.array([0, 0, 0]),
-        min_threshold=0.1,
-        max_threshold=10000000,
-        radius=-1
-    )
-
-    lfinger_sensor = ContactSensor(
-        prim_path="/World/Franka/panda_leftfinger/Contact_Sensor",
-        name="Contact_Sensor_l",
-        frequency=100,
-        translation=np.array([0, 0, 0]),
-        min_threshold=0.1,
-        max_threshold=10000000,
-        radius=-1
-    )
-
-    hand_sensor = ContactSensor(
-        prim_path="/World/Franka/panda_hand/Contact_Sensor",
-        name="Contact_Sensor_hand",
-        frequency=100,
-        translation=np.array([0, 0, 0]),
-        min_threshold=0.1,
-        max_threshold=10000000,
-        radius=-1
-    )
-
-    # franka_sensor = ContactSensor(
-    #     prim_path="/World/Franka/Contact_Sensor",
-    #     name="Contact_Sensor_franka",
-    #     frequency=60,
-    #     translation=np.array([0, 0, 0]),
-    #     min_threshold=0.1,
-    #     max_threshold=10000000,
-    #     radius=-1
-    # )
-
-    # from isaaclab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, patterns
-
-    # contact_forces = ContactSensorCfg(
-    #     prim_path="/World/Franka", update_period=0.0, history_length=6, debug_vis=True
-    # )
-
-    import omni
-    from pxr import PhysxSchema
-
-    # stage = omni.usd.get_context().get_stage()
-    contact_report_cube = PhysxSchema.PhysxContactReportAPI.Apply(cube_prim)
-    contact_report_rf = PhysxSchema.PhysxContactReportAPI.Apply(rfinger_prim)
-    contact_report_lf = PhysxSchema.PhysxContactReportAPI.Apply(lfinger_prim)
-    contact_report_hand = PhysxSchema.PhysxContactReportAPI.Apply(hand_prim)
-    # contact_report_franka = PhysxSchema.PhysxContactReportAPI.Apply(franka_prim)
-
-    cube_collision = PhysxSchema.PhysxCollisionAPI.Apply(cube_prim)
-    # print(dir(cube_collision))
-    # cube_collision.CreateApproximationAttr("boundingCube")
-    hand_collision = PhysxSchema.PhysxCollisionAPI.Apply(hand_prim)
-    rfinger_colliion = PhysxSchema.PhysxCollisionAPI.Apply(rfinger_prim)
-    lfinger_collision = PhysxSchema.PhysxCollisionAPI.Apply(lfinger_prim)
-    # franka_collision = PhysxSchema.PhysxCollisionAPI.Apply(franka_prim)
-
-    # Set a minimum threshold for the contact report to zero
-    contact_report_cube.CreateThresholdAttr(0.0)
-    contact_report_rf.CreateThresholdAttr(0.0)
-    contact_report_lf.CreateThresholdAttr(0.0)
-    contact_report_hand.CreateThresholdAttr(0.0)
-    # contact_report_franka.CreateThresholdAttr(0.0)
-    # print(dir(franka_collision))
-    # print(dir(franka_sensor))
-    # print(dir(cube_prim))
-
-    cube_prim.CreateAttribute("physxCollision:approximation", Sdf.ValueTypeNames.Token).Set("boundingCube")
-    hand_prim.CreateAttribute("physxCollision:approximation", Sdf.ValueTypeNames.Token).Set("convexHull")
-    rfinger_prim.CreateAttribute("physxCollision:approximation", Sdf.ValueTypeNames.Token).Set("convexHull")
-    lfinger_prim.CreateAttribute("physxCollision:approximation", Sdf.ValueTypeNames.Token).Set("convexHull")
-    # franka_prim.CreateAttribute("physxCollision:approximation", Sdf.ValueTypeNames.Token).Set("convexHull")
-
-       
-
-    # cube_collision.CreateApproximationAttr().Set("convexDecomposition")
-    # hand_collision.CreateApproximationAttr().Set("convexDecomposition")
-    # rfinger_colliion.CreateApproximationAttr().Set("convexDecomposition")
-    # lfinger_collision.CreateApproximationAttr().Set("convexDecomposition")
-
-
-    # contact_report_cube.CreateCollisionEnabledAttr().Set(True)
-    # contact_report_hand.CreateCollisionEnabledAttr().Set(True)
-    # contact_report_lf.CreateCollisionEnabledAttr().Set(True)
-    # contact_report_rf.CreateCollisionEnabledAttr().Set(True)
-
-    # contact_report_cube.CreateContactOffsetAttr().Set(0.01)
-    # contact_report_hand.CreateContactOffsetAttr().Set(0.01)
-    # contact_report_lf.CreateContactOffsetAttr().Set(0.01)
-    # contact_report_rf.CreateContactOffsetAttr().Set(0.01)
-
-
-    # contact_report_cube.CreateApproximationAttr().Set("convexDecomposition")
-    # contact_report_hand.CreateApproximationAttr().Set("convexDecomposition")
-    # contact_report_lf.CreateApproximationAttr().Set("convexDecomposition")
-    # contact_report_rf.CreateApproximationAttr().Set("convexDecomposition")
-
-    # physicsUtils.add_rigid_xform(stage, "/World/Franka/panda_rightfinger")
-    # physicsUtils.add_collision_to_collision_group("/World/Franka/panda_rightfinger")
-
-    # physicsUtils.add_rigid_xform(stage, "/World/Cube")
-    # physicsUtils.add_collision_to_collision_group("/World/Cube")
-
-    arm_path = "/World/Franka/panda_hand/arm_camera"
-    arm_camera = UsdGeom.Camera.Define(stage, arm_path)
-    arm_camera.AddTranslateOp().Set(Gf.Vec3f(-0.011052506998599807, 0.002351993160557201, -1.6135926818935435))
-    arm_camera.AddOrientOp().Set(Gf.Quatf(0.0, 0.7, 0.7, 0.0))
-
-    static_path = "/World/static_camera"
-    static_camera = UsdGeom.Camera.Define(stage, static_path)
-    static_camera.AddTranslateOp().Set(Gf.Vec3f(-0.025128380734830664, 6.88345, 0.735964839641152))
-    static_camera.AddOrientOp().Set(Gf.Quatf(-0.00355, -0.005, 0.6779, 0.73513))
-
-    import omni.kit.app
-    import omni.replicator.core as rep
-    from pathlib import Path
-    import os
-
-    arm_camera_prim = stage.GetPrimAtPath(arm_path)
-    static_camera_prim = stage.GetPrimAtPath(static_path)
-
-    if not arm_camera_prim.IsValid() or not static_camera_prim.IsValid():
-        print("Camera prim(s) not valid!")
-
-    arm_rp = rep.create.render_product(arm_path, resolution=(640, 480))
-    static_rp = rep.create.render_product(static_path, resolution=(640, 480))
-
-    writer = rep.WriterRegistry.get("BasicWriter")
-
-    output_dir = Path(os.path.expanduser("~/robotics-rl/camera_output"))
-    output_dir.mkdir(exist_ok=True)
-
-    writer.initialize(output_dir=str(output_dir), rgb=True)
-    app = omni.kit.app.get_app()
-
-    #------------------------------ WORLD RESET ---------------------------------------#
-    my_world.reset()
-
-
-    capture_count = 0
-    toggle_interval = 3
-    last_toggle_time = time.time()
     move_by_vel = False
-
-    def capture_images(self):
-        self.writer.attach([self.arm_rp, self.static_rp])
-        for _ in range(3):
-            self.my_world.step(render=True)
-        self.writer.detach()
-
-    from isaacsim.sensors.physics import _sensor
-    _contact_sensor_interface = _sensor.acquire_contact_sensor_interface()
-    # from isaacsim.core.api.sensors import RigidContactView
-    # print(dir(RigidContactView))
-    # contact_view = RigidContactView(prim_paths_expr="/World/Franka/*", filter_paths_expr="/World/Cube")    
-    # contact_view.initialize(sim_context.physics_sim_view)
-    # print(dir(_contact_sensor_interface))
-    # print(dir(hand_sensor))
-    print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
-    def step(self, action):
-        import omni.physx
-        if self.move_by_vel:
-            self.my_franka.set_joint_velocities(action)
-        else:
-            self.my_franka.set_joint_positions(action)
-
+    def step(sim: sim_utils.SimulationContext, scene: InteractiveScene, rep):
+        sim_dt = sim.get_physics_dt()        
+        franka = scene["robot"]
+        contact_sensor = scene["contact_sensor"]
+        cube = scene["cube"]
         
+        joint_pos = get_random_joint_positions()
+        joint_vel = get_random_joint_velocities()
+        franka.write_joint_state_to_sim(joint_pos, joint_vel)
+        scene.write_data_to_sim()
+        sim.step()
+        scene.update(sim_dt)
 
-        # self.capture_images() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        observation = self.get_observation()
-        collision_r = False
-        collision_l = False
-        collision_hand = False
-        
-        # physx_sim_interface = omni.physx.acquire_physx_simulation_interface()
-        # contact_headers, contact_data = physx_sim_interface.get_contact_report()
+        # Capture images for every repetition
+        # capture_images(scene,rep,"side_camera", "~/robotics-rl/camera_output/side_camera") # <---------------- uncomment
+        # capture_images(scene,rep,"hand_camera", "~/robotics-rl/camera_output/hand_camera") # <---------------- uncomment
 
-        # Define the paths to the Franka robot and the cube
-        franka_path = "/World/Franka/panda_rightfinger"
-        cube_path = "/World/Cube"
-        # print("Cube : ",self.cube_sensor.get_current_frame())
-        
-
-        # print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right finger")
-        # print_contact("/World/Franka/panda_leftfinger/Contact_Sensor", "Left finger")
-        # print_contact("/World/Franka/panda_hand/Contact_Sensor", "Hand")
-
-        # from isaacsim.core.utils.physics import wake_up_prim
-
-        # wake_up_prim(self.cube_prim)
-        # raw_rigid_cube_data = self._contact_sensor_interface.get_rigid_body_raw_data("/World/Cube")
-        # print("after cube raw")
-        # raw_data_r = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_rightfinger/Contact_Sensor")
-        # raw_data_l = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_leftfinger/Contact_Sensor")
-        # raw_data_hand = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/panda_hand/Contact_Sensor")
-        # raw_data_franka = self._contact_sensor_interface.get_contact_sensor_raw_data("/World/Franka/Contact_Sensor")
-        # reading = _contact_sensor_interface.get_sensor_reading("/World/Franka/panda_rightfinger/Contact_Sensor")
-        # 200193, 29361409
-        
-        import math
-
-        # if :
-        #     print("True contact")
-
-        # if raw_data_franka.size > 0:
-        #     body = self._contact_sensor_interface.decode_body_name(raw_data_franka[0][3])
-        #     impolse = raw_data_franka[0][6]
-        #     # print(impolse)
-        #     print(body)
-        #     if(body == "/World/Cube"):
-        #         # collision_r = True
-        #         print(f"Franka --> cube : {impolse}")
-        # print(raw_rigid_cube_data)
-        # print(dir(self.hand_sensor))
-        collision_r = FrankaGym.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
-        # self.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
-        # print("Hand : ",self.hand_sensor.get_current_frame())
-        # print("Left Finger : ",self.lfinger_sensor.get_current_frame())
-        # print("Right FInger : ",self.rfinger_sensor.get_current_frame())
-
-        collision_l = FrankaGym.print_contact("/World/Franka/panda_leftfinger/Contact_Sensor","Left Finger")
-
-        collision_hand = FrankaGym.print_contact("/World/Franka/panda_hand/Contact_Sensor","Panda Hand")
-
-        if (collision_l | collision_r | collision_hand):
+        max_force = torch.max(contact_sensor.data.net_forces_w).item()
+        if max_force != 0.0:
+            print("Received max contact force of :",max_force)
+        force_magnitudes = torch.norm(contact_sensor.data.force_matrix_w, dim=-1)
+        contact_detected = (force_magnitudes > 0.1).any().item()
+        if contact_detected:
+            time_point = time.time() + 4
+            print(time.time())
+            print(time_point)            
+            while time.time() < time_point:{"print(time.time())"}
+            print("--------------------Franka Touched the Cube--------------------")
+            #time.sleep(5.0)
+            # FrankaGym.close()
             reward = -10.0
             done = True
         else:
-            reward = self.calculate_reward(observation, done=False)
+            reward = FrankaGym.calculate_reward(scene)
             done = False
 
-        info = {"collision": (collision_l | collision_r | collision_hand)}
-        self.my_world.step(render=True)        
+        info = {"Cube collision": contact_detected}
+         
+        observation = FrankaGym.get_observation(scene)       
         return observation, reward, done, info
 
 
-    def reset(self):
+    def reset(sim: sim_utils.SimulationContext, scene: InteractiveScene):
         """Reset environment"""
-        self.my_world.reset()
-        self.my_franka.set_joint_positions([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05])
-        self.my_franka.gripper.set_default_state(self.my_franka.gripper.joint_opened_positions)
-        self.cube.set_local_pose(position=np.array([0.3, 0.3, 0.3]))
-        return self.get_observation()
+        sim.reset()
+        targets = scene["robot"].data.default_joint_pos
+        scene["robot"].set_joint_position_target(targets)
+        scene["cube"].write_root_com_pose_to_sim() # default_root_state 
+        return FrankaGym.get_observation(scene)
     
     def render(self, mode='human'):
         """Nothing needed since Isaac Sim is rendering automatically."""
         pass
 
-    def calculate_reward(self, new_state, done):
-        """Simple distance reward"""
-        gripper_pos = self.my_franka.end_effector.get_local_pose()[0]
-        cube_pos = self.cube.get_local_pose()[0]
+    # def calculate_reward(self, new_state, done):
+    #     """Simple distance reward"""
+    #     gripper_pos = self.my_franka.end_effector.get_local_pose()[0]
+    #     cube_pos = self.cube.get_local_poses()[0]
 
-        distance = np.linalg.norm(gripper_pos - cube_pos)
-        reward = -distance
-        return reward
+    #     distance = np.linalg.norm(gripper_pos - cube_pos)
+    #     reward = -distance
+    #     return reward
     
-    def get_observation(self):
-        """Get observation: robot joints + cube position"""
-        joint_pos = self.my_franka.get_joint_positions()
-        cube_pos = self.cube.get_local_pose()[0]
+    def calculate_reward(scene: InteractiveScene) -> torch.Tensor:
+        franka = scene["robot"]
+        cube = scene["cube"]
+        fdata = franka.data
+
+        link_names = fdata.body_names
+        idx_left = link_names.index("panda_leftfinger")
+        idx_right = link_names.index("panda_rightfinger")
+
+        pos_left = fdata.body_link_pos_w[:, idx_left]
+        pos_right = fdata.body_link_pos_w[:, idx_right]
+        gripper_center = (pos_left + pos_right) / 2
+        cube_pos = cube.data.body_pos_w[:, 0]  # only one body
+        
+        distance = torch.norm(gripper_center - cube_pos, dim=-1).cpu().numpy().reshape(-1)
+        reward = -distance
+
+        return reward
+
+    def get_observation(scene: InteractiveScene):
+        # Get observation: robot joints + cube position
+        joint_pos = scene["robot"].data.joint_pos.cpu().numpy().reshape(-1)
+        cube_pos = scene["cube"].data.body_pos_w.cpu().numpy().reshape(-1)
         observation = np.concatenate([joint_pos, cube_pos])
         return observation
     
-    def close(self):
-        self.simulation_app.close()
+    def close():
+        print("--------------------Simulation Shutdown--------------------")
+        simulation_app.app.shutdown()
 
-# FrankaGym.print_contact("/World/Franka/panda_rightfinger/Contact_Sensor", "Right Finger")
+def capture_images(scene: InteractiveScene, rep, camera, path):
+    rgb_tensor = scene[camera].data.output["rgb"]
+    rgb_np = rgb_tensor.squeeze(0).cpu().numpy()  
+    save_dir = Path(path).expanduser()
+    save_dir.mkdir(parents=True, exist_ok=True)
+    image_path = save_dir / f"camera_output_{rep}.png"
+    imageio.imwrite(str(image_path), rgb_np)
+    # print(f"--------Saved {image_path}--------")
+    # # For 10 images
+    # if rep == 10:
+    #     FrankaGym.close()
+    
+
+
+def get_random_joint_velocities(scale_arm=100.0, scale_gripper=2.5):
+    arm_vel = (np.random.rand(7) - 0.5) * 2 * scale_arm
+    gripper_vel = np.random.uniform(-1, 1) * scale_gripper
+    gripper = np.array([gripper_vel, gripper_vel])
+    joint_vel = np.concatenate([arm_vel, gripper])
+    return torch.tensor(joint_vel, dtype=torch.float32, device="cuda:0").unsqueeze(0)
+
+def get_random_joint_positions():
+    joint_limits_lower = np.array([-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973])
+    joint_limits_upper = np.array([ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973])
+    
+    arm_positions = np.random.uniform(joint_limits_lower, joint_limits_upper)
+    gripper_position = np.random.uniform(0.02, 0.05)
+    gripper = np.array([gripper_position, gripper_position])
+    joint_pos = np.concatenate([arm_positions, gripper])
+    return torch.tensor(joint_pos, dtype=torch.float32, device="cuda:0").unsqueeze(0)
+
+def simulation_run(sim: sim_utils.SimulationContext, scene: InteractiveScene):
+    sim_dt = sim.get_physics_dt()
+    sim_time = 0.0
+    count = 0
+    rep = 0
+    # franka = scene["robot"] 
+    # contact_sensor = scene["contact_sensor"]
+    # cube = scene["cube"]
+    
+    # Main Loop 
+    while simulation_app.is_running():
+        count += 1
+        if count % 20 == 0:
+            rep += 1
+            print("Repetition :",rep)
+            FrankaGym.step(sim,scene,rep)
+        else:
+            scene.write_data_to_sim()
+            sim.step()
+            sim_time += sim_dt
+            scene.update(sim_dt)
+
+        
+def main():
+    """Main function."""
+
+    # Initialize the simulation context
+    sim_cfg = sim_utils.SimulationCfg(dt=0.005, device=args_cli.device)
+    sim = sim_utils.SimulationContext(sim_cfg)
+    # Set main camera
+    sim.set_camera_view(eye=[1.5, 2.0, 1.5], target=[0.0, 0.0, 0.0])
+    # design scene
+    scene_cfg = SceneCfg(num_envs=args_cli.num_envs, env_spacing=2.0)
+    scene = InteractiveScene(scene_cfg)
+    # Play the simulator
+    sim.reset()
+    # Now we are ready!
+    print("----------------Setup complete----------------")
+    # Run the simulation
+    simulation_run(sim, scene)
+
+
 if __name__ == "__main__":
-    env = FrankaGym()
-    i=0
-    try:
-        for i in range(900):
-            print("Repetition",i+1)
-            action = get_random_joint_velocities() if env.move_by_vel else get_random_joint_positions()
-            obs, reward, done, info = env.step(action)
-            # print(f"Reward: {reward}\nStep {i}\n{info}")
-            
-            time.sleep(0.01)
-    finally:
-        env.close()
+    # run the main function
+    main()
+    # close sim app
+    simulation_app.close()
