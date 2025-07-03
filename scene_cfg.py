@@ -1,15 +1,12 @@
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, patterns
-from isaaclab.utils import configclass
 from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 from isaaclab.assets import RigidObject, RigidObjectCfg
 from pathlib import Path
 import imageio.v2 as imageio
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.utils import configclass
 
 @configclass

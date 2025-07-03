@@ -8,40 +8,11 @@ import random
 import imageio.v2 as imageio
 from envs.gym_environment_interface import GymEnvironmentInterface
 class FrankaGym(gym.Env, GymEnvironmentInterface):
-    metadata = {"render_modes": [], 'render_fps' : 60}
-    def __init__(self):
+    metadata = {"render_modes": [], 'render_fps' : 30}
+    def __init__(self, app, sim, scene):
         super(FrankaGym, self).__init__()
         
-        import argparse
-
-        from isaaclab.app import AppLauncher
-
-        # add argparse arguments
-        parser = argparse.ArgumentParser(description="Gymnasium Enviroment for Franka trainning")
-        parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
-        # append AppLauncher cli args
-        AppLauncher.add_app_launcher_args(parser)
-        # parse the arguments
-        args_cli = parser.parse_args()
-
-        # launch omniverse app
-        app_launcher = AppLauncher(args_cli)
-        self.app = app_launcher.app
-        import numpy as np
-        import isaaclab.sim as sim_utils
-        from isaaclab.scene import InteractiveScene
-        from set_up_cfg import SceneCfg
-        import torch
-        # Initialize the simulation context
-        sim_cfg = sim_utils.SimulationCfg(dt=0.005, device=args_cli.device)
-        sim = sim_utils.SimulationContext(sim_cfg)
-        # Set main camera
-        sim.set_camera_view(eye=[1.5, 2.0, 1.5], target=[0.0, 0.0, 0.0])
-        # design scene
-        scene_cfg = SceneCfg(num_envs=1, env_spacing=2.0)
-        scene = InteractiveScene(scene_cfg)
-        # Play the simulator
-        sim.reset()
+        
         # franka = scene["robot"]
         # init_pos_target = torch.tensor([0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.00, 0.00], dtype=torch.float64, device="cuda:0").unsqueeze(0)
         # franka.write_joint_position_to_sim(init_pos_target)
@@ -52,23 +23,28 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         # Now we are ready!
         self.sim = sim
         self.scene = scene
+        self.app = app
         joint_lower = [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
         joint_upper = [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]
         
+        # Action: 7 joint positions + 1 gripper state = 8 dimensions
+        self.action_space = spaces.Box(
+            low=np.array(joint_lower + [0.0]),      
+            high=np.array(joint_upper + [1.0]),     
+            dtype=np.float64
+        )
+
+        margin = 0.05
+        joint_lower = [j - margin for j in joint_lower]
+        joint_upper = [j + margin for j in joint_upper]
+
         # Observation: 3D distance + 7D joints + 1D gripper state = 11 dimensions
         self.observation_space = spaces.Box(
-            low=np.array([-np.inf]*3 + joint_lower + [0]),    
-            high=np.array([np.inf]*3 + joint_upper + [1]),    
+            low=np.array([-10.0]*3 + joint_lower + [0.0]),    
+            high=np.array([10.0]*3 + joint_upper + [1.0]),    
             dtype=np.float64
         )
         
-        # Action: 7 joint positions + 1 gripper state = 8 dimensions
-        self.action_space = spaces.Box(
-            low=np.array(joint_lower + [0]),      
-            high=np.array(joint_upper + [1]),     
-            dtype=np.float64
-        )
-        self.max_distance = 1
         self.joint_pos = None
         self.count = 0
         self.cube_contact = False
@@ -76,7 +52,8 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
     
     def step(self, action):
         self.count += 1
-        print(f"Repetition : {self.count}")
+        terminated = False
+        # print(f"Repetition : {self.count}")
         sim_dt = self.sim.get_physics_dt()        
         franka = self.scene["robot"]
         cube = self.scene["cube"]        
@@ -86,13 +63,14 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         cx = cube_pos.squeeze(1)[0][0].item()
         cy = cube_pos.squeeze(1)[0][1].item()
         # if ((cx > 0.7 or (cx < 0.3 and cx > -0.3)) or (cx < -0.7 or (cx > -0.3 and cx < 0.3))) or ((cy > 0.7 or (cy < 0.3 and cy > -0.3)) or (cy < -0.7 or (cy > -0.3 and cy < 0.3))):
-        if    (abs(cx) > 0.7 or (abs(cx) < 0.3 and (abs(cy) > 0.7 or abs(cy) < 0.3))):
+        if    ((abs(cx) > 0.51 or (abs(cx) < 0.3 and (abs(cy) > 0.51 or abs(cy) < 0.3))) or self.calculate_distance(False) > 2.0):
             env_ids = torch.tensor([0], dtype=torch.long, device="cuda:0")
-            cube_pose = torch.tensor([random.uniform(0.3, 0.7) if random.random() < 0.5 else random.uniform(-0.7, -0.3), random.uniform(0.3, 0.7) if random.random() < 0.5 else random.uniform(-0.7, -0.3), 0.0, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+            cube_pose = torch.tensor([random.uniform(0.3, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.3), random.uniform(0.3, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.3), 0.0, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
             cube.write_root_pose_to_sim(cube_pose, env_ids)
             zero_vel = torch.zeros((1, 6), dtype=torch.float32, device="cuda:0")  # [linear(3), angular(3)]
             cube.write_root_velocity_to_sim(zero_vel, env_ids)
             cube.write_data_to_sim()
+            terminated = True
         g_state = 0.04
         if action[7] > 0.0:
             g_state = 0.0
@@ -110,17 +88,14 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         # capture_images(scene,rep,"side_camera", "~/robotics-rl/camera_output/side_camera") # <---------------- uncomment
         # capture_images(scene,rep,"hand_camera", "~/robotics-rl/camera_output/hand_camera") # <---------------- uncomment
         reward = self.calculate_reward() 
-        terminated = False
-        if reward == -3:    
+        if reward == -1 or reward == 2 or reward == 100:    
             terminated = True
-        truncated = False
-
         info = {
                 "Cube collision": self.cube_contact
                }
         
-        observation = self._get_observation()       
-        return observation, reward, terminated, truncated, info
+        observation = self._get_observation()
+        return observation, reward, terminated, False, info
 
 
     def reset(self, *, seed=None, options=None):
@@ -140,7 +115,7 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         observation = self._get_observation()
         self.cube_contact = False
         self.count = 0
-        print("Enviroment Reseted")
+        # print("Enviroment Reseted")
         return observation , {}
     
     def render(self, mode='human'):
@@ -149,31 +124,45 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
 
     def calculate_reward(self):
         contact_sensor = self.scene["contact_sensor"]
+        cube = self.scene["cube"]        
         max_force = torch.max(contact_sensor.data.net_forces_w).item()
         # print("Received max contact force of :",max_force)
         force_magnitudes = torch.norm(contact_sensor.data.force_matrix_w, dim=-1)
         contact_detected = (force_magnitudes != 0.0).any().item()
-        distance = torch.norm(self.calculate_distance())
-        if distance > self.max_distance:
-            self.max_distance = distance
-        if max_force > 0.0 and contact_detected:          
-            print("------------------------Franka Touched the Cube------------------------")
-            # FrankaGym.close()
+        distance = self.calculate_distance(False)
+        g_status = self._get_observation()[10]
+        if distance == 0: # directly obove the cube ---> goal reached!!!
+            if g_status == 1.0:
+                return 100
+            else:
+                return 2
+        if max_force > 0.0 and contact_detected: # cube contact         
+            print("Franka Touched the Cube")
             self.cube_contact = True
-            reward = -(distance*2)
-            # self.reset()
-            time.sleep(1)
+            cube_vel = cube.data.body_vel_w
+            if cube_vel.abs().max().item() > 1.0: # with force
+                return -1
+            else: 
+                return 1 # without force
         elif max_force > 0.0 : # the only other contact is the groundplane
-            reward = -3
-            # self.reset()
+            return -1
         else :
             self.cube_contact = False    
-            reward = 1.0 - (distance / self.max_distance) #.clamp(min=0.0, max=1.0)
-        print(f"Reward : {reward}")
-        return reward
+            if distance < 0.1 and g_status == 1.0: # if its very close and gripper is open 
+                return 1
+            elif distance < 0.1 and g_status == 0.0: 
+                return -0.3
+            
+            # if distance > 1.0:
+            #     return -0.3
+            # elif distance > 0.5:
+            #     return 0
+            # elif distance >= 0.1:
+            #     return 0.5 
+            return 1.0 - (distance / 1.5) #.clamp(min=0.0, max=1.0)
 
 
-    def calculate_distance(self):
+    def calculate_distance(self, array):
         franka = self.scene["robot"]
         cube = self.scene["cube"]
         fdata = franka.data
@@ -186,11 +175,16 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         pos_right = fdata.body_link_pos_w[:, idx_right]
         gripper_center = (pos_left + pos_right) / 2
         cube_pos = cube.data.body_pos_w[:, 0]  # only one body
-        distance = torch.stack([
-            gripper_center[0][0] - cube_pos[0][0],
-            gripper_center[0][1] - cube_pos[0][1],
-            gripper_center[0][2] - cube_pos[0][2]
-        ])
+        if array:
+            distance_array = torch.stack([
+                gripper_center[0][0] - cube_pos[0][0],
+                gripper_center[0][1] - cube_pos[0][1],
+                gripper_center[0][2] - cube_pos[0][2]
+            ])
+            return distance_array
+        gr_array = np.array(gripper_center.squeeze(0).cpu().numpy())
+        cb_array = np.array(cube_pos.squeeze(0).cpu().numpy())
+        distance = np.linalg.norm(gr_array - cb_array)
         return distance
 
     def _get_observation(self):
@@ -203,7 +197,7 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         g_status = torch.tensor([1], dtype=torch.float64, device="cuda:0")
         if gr_pos[0].item() < 0.03:
             g_status = torch.tensor([0], dtype=torch.float64, device="cuda:0")
-        distance = self.calculate_distance()
+        distance = self.calculate_distance(True)
         # print("distance ", distance[0])
         # print("gstatus",g_status[0])
         obs = torch.cat([distance,joint_pos_7, g_status], dim=0)
