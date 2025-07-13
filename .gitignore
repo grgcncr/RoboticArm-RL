@@ -1,3 +1,5 @@
 rl-examples/
 *.zip
 __pycache__/
+checkpoints/
+logs/

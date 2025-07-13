@@ -1,9 +1,6 @@
 from stable_baselines3 import PPO
 import gymnasium as gym
 from pathlib import Path
-from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.callbacks import BaseCallback
-import numpy as np
 from stable_baselines3.common.monitor import Monitor
 from simapp_cfg import simapp_cfg
 from checkpoint_callback import CheckpointCallback
@@ -22,17 +19,24 @@ def train_agent():
 
     # Instantiate the agent
     model = PPO(
-        'MlpPolicy', 
+        "MlpPolicy",
         env,
-        tensorboard_log=logs_dir
+        learning_rate=0.0005,
+        n_steps=1024,
+        batch_size=64,
+        n_epochs=10,
+        gamma=0.99,
+        gae_lambda=0.95,
+        policy_kwargs=dict(net_arch=[dict(pi=[128, 128], vf=[128, 128])]),
+        tensorboard_log=logs_dir,
     )
     
     # Checkpoint Callback
-    checkpoint_callback = CheckpointCallback(save_freq=10000, save_path=checkpoint_dir)
+    checkpoint_callback = CheckpointCallback(save_freq=1024 * 100, save_path=checkpoint_dir)
 
     # Train the agent
-    model.learn(total_timesteps=100000, callback=checkpoint_callback, progress_bar=True)
-    
+    model.learn(total_timesteps=1024 * 1000, callback=checkpoint_callback, progress_bar=True)
+    env.close()
     # Save the model
     # model_path = os.path.join('saved_models', 'PPO_grid_model')
     # model.save(model_path)

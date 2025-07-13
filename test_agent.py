@@ -20,15 +20,18 @@ def test_agent(model_path, num_episodes=100):
         done = False
         total_reward = 0
         while not done:
-            action, _states = model.predict(obs, deterministic=True)
-            # print("before",observation)
-            observation, reward, terminated, truncated, info = env.step(action)
-            print("after",observation)
+            action, _states = model.predict(observation = obs, deterministic = True)
+            # print("action",action)
+            obs, reward, terminated, truncated, info = env.step(action)
             # env.render()
+            # print("action:", action)
+            # print("next observation:", obs)
+            # print("reward:", reward)
+            # print("done:", done)
             total_reward += reward
             done = terminated or truncated
         print(f"Episode {episode + 1}: Total Reward = {total_reward}")
 
 if __name__ == '__main__':
-    model_path = '/home/mushroomgeorge/robotics-rl/checkpoints/model_100000_steps.zip'
+    model_path = '/home/mushroomgeorge/robotics-rl/checkpoints/model_1536000_steps.zip'
     test_agent(model_path)
