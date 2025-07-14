@@ -128,6 +128,37 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
     def render(self, mode='human'):
         """Nothing needed since Isaac Sim is rendering automatically."""
         pass
+
+    def calculate_reward_simplified(self):
+        cube = self.scene["cube"]
+        contact_sensor = self.scene["contact_sensor"]
+    
+        # Calculate Euclidean distance between gripper center and cube
+        distance = self.calculate_distance(False)
+        g_status = self._get_observation()[10]  # 1 = gripper open, 0 = gripper closed
+    
+        # Terminal condition: success if gripper is open very close to the cube
+        if distance < 0.03 and g_status == 1.0:
+            return 100.0  # Successful grasp (open gripper close to cube)
+    
+        # Main reward: encourage approaching the cube
+        # 1.0 when fully at the cube, 0.0 when 1 meter away or more
+        distance_reward = 1.0 - min(distance / 1.0, 1.0)
+    
+        # Bonus: encourage keeping gripper open when near the cube
+        gripper_bonus = 0.0
+        if g_status == 1.0 and distance < 0.1:
+            gripper_bonus = 0.2  # Small reward boost
+    
+        # Penalty: if contact (collision) happens, apply immediate negative reward
+        max_force = torch.max(contact_sensor.data.net_forces_w).item()
+        if max_force > 0.0:
+            return -1.0  # Penalize any collision (ground, cube, etc.)
+    
+        # Total reward: distance-based reward + gripper bonus
+        total_reward = distance_reward + gripper_bonus
+
+        return float(total_reward)
     
     def calculate_reward(self):
         contact_sensor = self.scene["contact_sensor"]
