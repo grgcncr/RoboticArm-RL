@@ -44,7 +44,7 @@ class SceneCfg(InteractiveSceneCfg):
                 "panda_joint6": 1.7,
                 "panda_joint7": 0.8,
                 "panda_finger_joint.*": 0.04,
-            },# prev start pos (0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.05, 0.05)
+            },# prev start pos (0.0, -0.6, 0.0, -2.2, 0.0, 1.7, 0.8, 0.04, 0.04)
         ),
         # actuators={
         #     "panda_shoulder": ImplicitActuatorCfg(
@@ -112,7 +112,7 @@ class SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.CuboidCfg(
             size=(0.05, 0.05, 0.05),  # 5cm cube
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.5),
+            mass_props=sim_utils.MassPropertiesCfg(mass=5.0),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001,rest_offset=0.0),
             visual_material=sim_utils.PreviewSurfaceCfg(
                 diffuse_color=(0.8, 0.2, 0.2),
@@ -145,7 +145,7 @@ class SceneCfg(InteractiveSceneCfg):
     # )
 
     # side_camera = CameraCfg(
-    #     prim_path="/World/side_camera",  
+    #     prim_path="{ENV_REGEX_NS}/side_camera",  
     #     update_period=0.1,
     #     height=480,
     #     width=640,
@@ -158,10 +158,10 @@ class SceneCfg(InteractiveSceneCfg):
     #     ),
     #     offset=CameraCfg.OffsetCfg(
     #         pos=(0.0, 3.5, 0.5),  
-    #         rot=(0.0, 0.0, 0.70711, -0.70711), 
+    #         rot=(0.0, 0.0, 0.70711, -0.70711),
+    #         convention="ros", 
     #     ),
     # )
-
     
     contact_sensor = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Franka/.*",
