@@ -29,7 +29,7 @@ def train_agent():
         n_epochs=10,
         gamma=0.99,
         gae_lambda=0.95,
-        ent_coef=0.001,                  
+        ent_coef=0.002,                  
         # clip_range=0.1,
         policy_kwargs=dict(net_arch=[dict(pi=[128, 128, 64], vf=[128, 128, 64])]),
         tensorboard_log=logs_dir,

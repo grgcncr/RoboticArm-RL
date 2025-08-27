@@ -12,7 +12,7 @@ class CustomCallback(BaseCallback):
         
     def _on_step(self) -> bool:
         if self.n_calls % self.save_freq == 0:
-            path = f"{self.save_path}/model65_{self.n_calls}_steps"
+            path = f"{self.save_path}/model68_{self.n_calls}_steps"
             self.model.save(path)
             if self.verbose:
                 print(f"Saved to {path}")

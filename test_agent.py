@@ -12,7 +12,7 @@ def test_agent(num_episodes=100):
     # Create the environment
     env = Monitor(gym.make('FrankaGymEnv'))
     # Load the trained model
-    model = PPO.load('/home/mushroomgeorge/robotics-rl/checkpoints/model64_1024000_steps.zip', env=env)
+    model = PPO.load('/home/mushroomgeorge/robotics-rl/checkpoints/model68_3072000_steps.zip', env=env)
 
     # Run the model for a number of episodes
     for episode in range(num_episodes):
