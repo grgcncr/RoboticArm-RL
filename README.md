@@ -47,11 +47,9 @@ RoboticArm-RL/
 └── requirements.txt
 ```
 
-## Setup Instructions
+## Setup & Installation
 
 ---
-
-## Setup & Installation
 
 ### 1. Prerequisites
 - **Isaac Sim** must be installed and working (see [Isaac Sim docs](https://developer.nvidia.com/isaac-sim)).  
@@ -65,8 +63,8 @@ Make sure you can launch Isaac Sim standalone before continuing.
 Next clone the repository to your local machine:
 
 ```bash
-git clone [URL-to-your-repo]
-cd grid_problem
+git clone https://github.com/grgcncr/RoboticArm-RL.git
+cd RoboticArm-RL
 ```
 
 ### 3. Create Conda Environment
