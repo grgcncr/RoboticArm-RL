@@ -40,6 +40,10 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         self.count = 0
         self.total_count = 0
         self.suc_count = 0
+        self.ep_suc_count = 0
+        self.ep_count = 0
+        self.suc_rate = 0
+        self.flag = False
         self.cube_contact = False
         self.prev_distance = None
         self.prev_gripper_center = None
@@ -63,94 +67,6 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
             # Capture images
             # self.capture_images("side_camera", "~/robotics-rl/camera_output/side_camera") # <---------------- uncomment
             # self.capture_images("hand_camera", "~/robotics-rl/camera_output/hand_camera") # <---------------- uncomment
-        
-        
-        # ===SUCCESS=== --> Ori: 0.33, link3-z: 0.57
-        # Distance: 0.04, x-y: 0.01, z: 0.04 
-        # Cube pos: tensor([[[ 0.5305, -0.1336,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [ 0.14995119  0.69500041 -0.39965433 
-        # -1.94331467  0.34194258  2.22981501
-        # -2.8973      0.67055678]
-
-        # ===SUCCESS=== --> Ori: 0.12, link3-z: 0.59
-        # Distance: 0.05, x-y: 0.03, z: 0.03 
-        # Cube pos: tensor([[[0.4147, 0.4214, 0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [ 0.69487011  0.61776996  0.09330231 
-        # -2.07425714 -0.06326482  2.56873226
-        # -2.45136905  1.        ]
-
-        # ===SUCCESS=== --> Ori: 0.24, link3-z: 0.58
-        # Distance: 0.04, x-y: 0.01, z: 0.04 
-        # Cube pos: tensor([[[ 0.5198, -0.1569,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [ 0.13000549  0.66015613 -0.43844473 
-        # -2.03546238  0.37563819  2.36542869
-        # -2.8973      1.        ]
-
-        # ===SUCCESS=== --> Ori: 0.28, link3-z: 0.56
-        # Distance: 0.05, x-y: 0.04, z: 0.04 
-        # Cube pos: tensor([[[-0.4545,  0.4271,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [ 2.10418344  0.76042145  0.28428364 
-        # -1.78696728 -0.47059396  2.23366666
-        # 0.48970163  1.        ]
-
-        # ===SUCCESS=== --> Ori: 0.20, link3-z: 0.57
-        # Distance: 0.04, x-y: 0.02, z: 0.04 
-        # Cube pos: tensor([[[ 0.4114, -0.4205,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [-0.32192889  0.70365196 -0.51841462 
-        # -2.00791502  0.80550206  2.39520764
-        # -2.8973      1.        ]
-
-        # ===SUCCESS=== --> Ori: 0.08, link3-z: 0.55
-        # Distance: 0.05, x-y: 0.03, z: 0.03 
-        # Cube pos: tensor([[[ 0.4533, -0.4515,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [-0.2036905   0.80050337 -0.53826392 
-        # -1.93972349  0.6071614   2.59789896
-        # -2.8973      1.        ]
-
-
-
-
-
-
-        # ===SUCCESS=== --> Ori: 0.27, link3-z: 0.60
-        # Distance: 0.05, x-y: 0.01, z: 0.05 
-        # Cube pos: tensor([[[-0.1567, -0.4650,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [-1.30468345  0.5637759  -0.59946591 
-        # -2.25347853  0.64572418  2.3631084
-        # 0.52186209  1.        ]
-
-        # ===SUCCESS=== --> Ori: 0.05, link3-z: 0.61
-        # Distance: 0.05, x-y: 0.01, z: 0.05 
-        # Cube pos: tensor([[[0.1515, 0.4629, 0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [ 0.94213212  0.47197792  0.29257882 
-        # -2.37295818 -0.2980344   2.77117467
-        # -0.08048934  1.        ]
-
-
-
-
-
-
-
-        # ===SUCCESS=== --> Ori: 0.16, link3-z: 0.53
-        # Distance: 0.06, x-y: 0.0146022355183959, z: 
-        # 0.054579611867666245 
-        # Cube pos: tensor([[[-0.4105,  0.1556,  0.0250]]], 
-        # device='cuda:0')
-        # Franka pos: [ 1.56358981  0.91938818  1.15408039 
-        # -2.39678192 -1.2282356   2.16234732
-        # -2.8973      1.        ]
-
-
-
 
         terminated = False
         trancated = False
@@ -181,14 +97,23 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         
         self.delta_orientation = self.get_delta_orientation()
 
-        if abs(cx) > 0.51 or abs(cy) > 0.51 or (abs(cx) < 0.4 and abs(cy) < 0.4) or cz > 1.0:
-            if random.randint(1, 3) == 1:
-                if random.randint(1,2) == 1:
-                    cube_pose = torch.tensor([random.uniform(-0.2, 0.2), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
-                else:
-                    cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(-0.2, 0.2), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
-            else:    
-                cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        # if abs(cx) > 0.51 or abs(cy) > 0.51 or (abs(cx) < 0.4 and abs(cy) < 0.4) or cz > 1.0:
+        #     if random.randint(1, 3) == 1:
+        #         if random.randint(1,2) == 1:
+        #             cube_pose = torch.tensor([random.uniform(-0.2, 0.2), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        #         else:
+        #             cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(-0.2, 0.2), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        #     else:    
+        #         cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+            
+        cube_distance_2d = math.sqrt(cx*cx + cy*cy)
+        if cube_distance_2d < 0.5 or cube_distance_2d > 0.55 or cz > 1.0:
+            angle = random.uniform(0, 2 * math.pi)
+            radius = math.sqrt(random.uniform(0.5**2, 0.55**2))
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            cube_pose = torch.tensor([x, y, 0.02, 1.0, 0.0, 0.0, 0.0],dtype=torch.float32, device="cuda:0").unsqueeze(0)
+
             zero_vel = torch.zeros((1, 6), dtype=torch.float32, device="cuda:0")  # [linear(3), angular(3)]
             cube.write_root_pose_to_sim(cube_pose, self.env_ids)
             cube.write_root_velocity_to_sim(zero_vel, self.env_ids)
@@ -207,21 +132,30 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
             self.cube_contact = True
             cube_vel = cube.data.body_vel_w
             max_cvel = cube_vel.abs().max().item()
-            print(f"{self.total_count} Contact: {max_cvel:.2f}", end="")
+            # print(f"{self.total_count} Contact: {max_cvel:.2f}", end="")
             if max_cvel > 1.0:
                 terminated = True
 
         reward = self.calculate_reward() 
         
         if reward == 100:#or reward == -1: # reward == -1 or reward == 2 or     
-            print(f"Cube pos: {cube_pos}\n Franka pos: {action}\n")
+            # print(f"Cube pos: {cube_pos}\n Franka pos: {action}\n")
             terminated = True
 
         if reward == -1:
             terminated = True
     
-        info["success_rate"] = self.suc_count / self.total_count
-        
+        if trancated or terminated:
+            self.ep_count += 1
+            self.flag = True # update suc_rate only in the 1st 100,200,300...th step
+
+        if self.ep_count % 100 == 0 and self.flag:
+            self.suc_rate = self.ep_suc_count / 100
+
+        info["success_rate"] = self.suc_rate
+        # info["distance"] = self.prev_distance
+
+
         observation = self._get_observation()
         return observation, reward, terminated, trancated, info
 
@@ -238,13 +172,20 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
 
         franka.write_data_to_sim()
         
-        if random.randint(1, 3) == 1:
-            if random.randint(1,2) == 1:
-                cube_pose = torch.tensor([random.uniform(-0.2, 0.2), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
-            else:
-                cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(-0.2, 0.2), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
-        else:    
-            cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        # if random.randint(1, 3) == 1:
+        #     if random.randint(1,2) == 1:
+        #         cube_pose = torch.tensor([random.uniform(-0.2, 0.2), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        #     else:
+        #         cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(-0.2, 0.2), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        # else:    
+        #     cube_pose = torch.tensor([random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), random.uniform(0.4, 0.5) if random.random() < 0.5 else random.uniform(-0.5, -0.4), 0.02, 1.0, 0.0, 0.0, 0.0], dtype=torch.float32, device="cuda:0").unsqueeze(0)
+        
+        angle = random.uniform(0, 2 * math.pi)
+        radius = math.sqrt(random.uniform(0.5**2, 0.55**2))
+        x = radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        cube_pose = torch.tensor([x, y, 0.02, 1.0, 0.0, 0.0, 0.0],dtype=torch.float32, device="cuda:0").unsqueeze(0)
+
         zero_vel = torch.zeros((1, 6), dtype=torch.float32, device="cuda:0")  # [linear(3), angular(3)]
         cube.write_root_pose_to_sim(cube_pose, self.env_ids)
         cube.write_root_velocity_to_sim(zero_vel, self.env_ids)
@@ -264,6 +205,8 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         self.distance_history = []
         self.progress_history = []
         self.count = 0
+        if self.ep_count % 100 == 0:
+            self.ep_suc_count = 0
         return observation , {}
     
     def render(self, mode='human'):
@@ -284,28 +227,48 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         g_status = obs[11]
         delta_orientation = self.delta_orientation
         link3_pos = self.get_link_pos("panda_link3")
-        # print("xy:",dis_xy,"\nz: ", dis_z, "\nori: ",delta_orientation)
+        link4_pos = self.get_link_pos("panda_link4")
+        link6_pos = self.get_link_pos("panda_link6")
+        link_meanz = (link3_pos[0][2] + link4_pos[0][2]) / 2
+
+        # if self.count <= 5:
+        #     print(f"distance: {dis}")
+        #     print(f"link3-z: {link3_pos[0][2]}")
+        #     print("xy:",dis_xy,"\nz: ", dis_z, "\nori: ",delta_orientation)
+        
+        # Contact Handling: terminate only if ground contact (not cube contact)
+        if max_force > 0.0 and not contact_detected:
+            # Ground contact (non-cube collision)
+            if self.total_count % 512000 == 0:
+                print(f"Success counter: {self.suc_count}")
+            return -1  # Immediate penalty and terminate
+        
         # Terminal condition: successful grasp (open gripper close to cube)
-        if self.cube_contact == True:
-            print(f", G_status: {g_status}, Ori: {delta_orientation:.2f},\n Dis: {dis:.2f}, Dis_xy: {dis_xy:.2f}, Dis_z: {dis_z:.2f} L3z: {link3_pos[0][2]:.2f}")
+        # if self.cube_contact == True:
+        #     print(f", G_status: {g_status}, Ori: {delta_orientation:.2f},\n Dis: {dis:.2f}, Dis_xy: {dis_xy:.2f}, Dis_z: {dis_z:.2f} Lmz: {link_meanz:.2f}")
         self.cube_contact = False
-        if not contact_detected and dis_z <= 0.06 and dis_xy <= 0.015 and g_status == 1.0 and delta_orientation < 0.5:
-            print(f"\n===SUCCESS=== --> Ori: {delta_orientation:.2f}, link3-z: {link3_pos[0][2]:.2f}\n Distance: {dis:.2f}, x-y: {dis_xy}, z: {dis_z} ")
+        if not contact_detected and dis_z <= 0.06 and dis_xy <= 0.015 and g_status == 1.0 and delta_orientation < 0.5 and link_meanz > 0.4:
+            # print(f"\n===SUCCESS=== --> Ori: {delta_orientation:.2f}, linkmean-z: {link_meanz:.2f}\n Distance: {dis:.2f}, x-y: {dis_xy}, z: {dis_z} ")
             self.suc_count += 1
+            self.ep_suc_count += 1
+            print(f"Success counter: {self.suc_count}")
+            print(f"Success episode counter: {self.ep_suc_count}")
+            if self.total_count % 512000 == 0:
+                print(f"Success counter: {self.suc_count}")
             return 100  # Success
-        if self.total_count % 1024000 == 0:
+        if self.total_count % 512000 == 0:
             print(f"Success counter: {self.suc_count}")
         # if self.count <= 5:
         #     print(f"link3 - z: {link3_pos[0][2]}, Joit3: {joint3}")
-        xy_reward = math.exp(-4 * dis_xy)
+        #     print(f"link4 - z: {link4_pos[0][2]}")
+        xy_reward = math.exp(-3.5 * dis_xy)
         # print("xy_reward: ",xy_reward)
-        z_reward = math.exp(-4 * dis_z)
+        z_reward = math.exp(-3.5 * dis_z)
         # print("z_reward: ",z_reward)
-        orientation_reward = math.exp(-3 * delta_orientation)
+        orientation_reward = math.exp(-1.5 * delta_orientation)
         # print("ori_reward: ", orientation_reward)
         reward = 0.45 * xy_reward + 0.35 * z_reward + 0.2 * orientation_reward
         # print(f"gstatus {g_status}")
-        
         # time.sleep(5)
         
         bonus = 0.0
@@ -316,50 +279,97 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         if g_status == 1.0:
             bonus += 0.05
 
-        # if joint3 <= -1.3 and joint3 >= -2.7:
-        #     bonus += 0.05
+        if joint3 <= -0.7 and joint3 >= -2.7:
+            bonus += 0.025
 
-        # if link3_pos[0][2] > 0.38 and link3_pos[0][2] <= 0.62 and dis < 0.7:#and dis_z < 0.4: and link3_pos[0][2] < 0.6
-        #     bonus += 0.05
+        if link_meanz > 0.4 and link_meanz <= 0.62 and dis < 0.7:#and dis_z < 0.4: and link3_pos[0][2] < 0.6
+            bonus += 0.025
+
+        if link6_pos[0][2] < link_meanz:
+            bonus += 0.02
 
         if not contact_detected and g_status == 1.0 and delta_orientation < 0.5:
-            if dis <= 0.1:
-                bonus += 0.3
-            elif dis <= 0.17:
-                bonus += 0.2
-            elif dis <= 0.25:
-                bonus += 0.1
-
-            if dis_xy <= 0.03 and dis_z <= 0.075:
-                bonus += 2.0
-            elif dis_xy <= 0.045 and dis_z <= 0.0835:
-                bonus += 1.5
-            elif dis_xy <= 0.06 and dis_z <= 0.09:
+            if dis <= 0.07:
                 bonus += 1.0
+            elif dis <= 0.08:
+                bonus += 0.5
+            elif dis <= 0.09:
+                bonus += 0.3
+            elif dis <= 0.12:
+                bonus += 0.1
+            # elif dis <= 0.2:
+            #     bonus += 0.1     
 
         penalty = 0
 
-        if joint3 > -1.3 or joint3 < -2.7:
-            if link3_pos[0][2] <= 0.38:
-                penalty += 0.15
+        if joint3 > -0.7:
             penalty += 0.15
 
-        if dis_z > 0.7:
+        if joint3 < -2.7:
             penalty += 0.2
 
-        if delta_orientation > 1:
-            if delta_orientation > 1.5:
-                penalty += 0.3
-            else:
-                penalty += 0.2
+        if  link_meanz <= 0.4 or link_meanz > 0.62:
+            penalty += 0.15
 
+        if link6_pos[0][2] >= link_meanz:
+            penalty += 0.15
+
+        if dis > 0.7:
+            penalty += 0.2
+        elif dis > 0.5:
+            penalty += 0.1
+        # elif dis > 0.3:
+        #     penalty += 0.1
+
+        # if dis_z < 0.02:
+        #     penalty += 0.1  
+
+        if delta_orientation > 1.5:
+            penalty += 0.3
+        elif delta_orientation > 1:
+            penalty += 0.2
+        # elif delta_orientation > 0.75:
+        #     penalty += 0.15
+        # elif delta_orientation > 0.5:
+        #     penalty += 0.05
+    
+        # if self.total_count >= 2000000:
+        #     if dis > 0.5:
+        #         penalty += 0.3
+        #     elif dis > 0.4:
+        #         penalty += 0.2
+        #     if delta_orientation > 0.7:
+        #         penalty += 0.1
+            # if dis > 0.5:
+            #     penalty += 0.6
+            # if dis > 0.6:
+            #     penalty += 0.9
+
+        # if self.total_count >= 3000000:
+        #     if dis > 0.3:
+        #         penalty += 0.2
+        #     if delta_orientation > 0.5:
+        #         penalty += 0.1
+        #     if dis > 0.4:
+        #         penalty += 0.6
+        #     if dis > 0.5:
+        #         penalty += 0.9
         
+        # if self.total_count >= 4000000:
+        #     if dis > 0.2:
+        #         penalty += 0.1
+        #     if dis > 0.3:
+        #         penalty += 0.6
+        #     if dis > 0.4:
+        #         penalty += 0.9
 
-
-        # Contact Handling: terminate only if ground contact (not cube contact)
-        if max_force > 0.0 and not contact_detected:
-            # Ground contact (non-cube collision)
-            return -1  # Immediate penalty and terminate
+        # if self.total_count >= 6000000:
+        #     if dis > 0.15:
+        #         penalty += 0.15
+        #     if dis > 0.2:
+        #         penalty += 0.6
+        #     if dis > 0.3:
+        #         penalty += 0.9
     
         # Total reward
         total_reward = reward + bonus - penalty
@@ -418,7 +428,7 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
         return obs_numpy
 
     def close(self):
-        print(f"Success-rate: {self.suc_count} / {self.total_count}")
+        print(f"Success-rate: {self.suc_count} / {self.ep_count}")
         print("Simulation Shutdown")
         self.app.app.shutdown()        
 
@@ -804,4 +814,102 @@ class FrankaGym(gym.Env, GymEnvironmentInterface):
 #             sim.step()
 #             sim_time += sim_dt
 #             scene.update(sim_dt)
+
+
+
+
+
+
+
+
+
+
+
+        
+        
+        # ===SUCCESS=== --> Ori: 0.33, link3-z: 0.57
+        # Distance: 0.04, x-y: 0.01, z: 0.04 
+        # Cube pos: tensor([[[ 0.5305, -0.1336,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [ 0.14995119  0.69500041 -0.39965433 
+        # -1.94331467  0.34194258  2.22981501
+        # -2.8973      0.67055678]
+
+        # ===SUCCESS=== --> Ori: 0.12, link3-z: 0.59
+        # Distance: 0.05, x-y: 0.03, z: 0.03 
+        # Cube pos: tensor([[[0.4147, 0.4214, 0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [ 0.69487011  0.61776996  0.09330231 
+        # -2.07425714 -0.06326482  2.56873226
+        # -2.45136905  1.        ]
+
+        # ===SUCCESS=== --> Ori: 0.24, link3-z: 0.58
+        # Distance: 0.04, x-y: 0.01, z: 0.04 
+        # Cube pos: tensor([[[ 0.5198, -0.1569,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [ 0.13000549  0.66015613 -0.43844473 
+        # -2.03546238  0.37563819  2.36542869
+        # -2.8973      1.        ]
+
+        # ===SUCCESS=== --> Ori: 0.28, link3-z: 0.56
+        # Distance: 0.05, x-y: 0.04, z: 0.04 
+        # Cube pos: tensor([[[-0.4545,  0.4271,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [ 2.10418344  0.76042145  0.28428364 
+        # -1.78696728 -0.47059396  2.23366666
+        # 0.48970163  1.        ]
+
+        # ===SUCCESS=== --> Ori: 0.20, link3-z: 0.57
+        # Distance: 0.04, x-y: 0.02, z: 0.04 
+        # Cube pos: tensor([[[ 0.4114, -0.4205,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [-0.32192889  0.70365196 -0.51841462 
+        # -2.00791502  0.80550206  2.39520764
+        # -2.8973      1.        ]
+
+        # ===SUCCESS=== --> Ori: 0.08, link3-z: 0.55
+        # Distance: 0.05, x-y: 0.03, z: 0.03 
+        # Cube pos: tensor([[[ 0.4533, -0.4515,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [-0.2036905   0.80050337 -0.53826392 
+        # -1.93972349  0.6071614   2.59789896
+        # -2.8973      1.        ]
+
+
+
+
+
+
+        # ===SUCCESS=== --> Ori: 0.27, link3-z: 0.60
+        # Distance: 0.05, x-y: 0.01, z: 0.05 
+        # Cube pos: tensor([[[-0.1567, -0.4650,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [-1.30468345  0.5637759  -0.59946591 
+        # -2.25347853  0.64572418  2.3631084
+        # 0.52186209  1.        ]
+
+        # ===SUCCESS=== --> Ori: 0.05, link3-z: 0.61
+        # Distance: 0.05, x-y: 0.01, z: 0.05 
+        # Cube pos: tensor([[[0.1515, 0.4629, 0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [ 0.94213212  0.47197792  0.29257882 
+        # -2.37295818 -0.2980344   2.77117467
+        # -0.08048934  1.        ]
+
+
+
+
+
+
+
+        # ===SUCCESS=== --> Ori: 0.16, link3-z: 0.53
+        # Distance: 0.06, x-y: 0.0146022355183959, z: 
+        # 0.054579611867666245 
+        # Cube pos: tensor([[[-0.4105,  0.1556,  0.0250]]], 
+        # device='cuda:0')
+        # Franka pos: [ 1.56358981  0.91938818  1.15408039 
+        # -2.39678192 -1.2282356   2.16234732
+        # -2.8973      1.        ]
+
+
 

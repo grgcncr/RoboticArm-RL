@@ -39,3 +39,11 @@ def simapp_cfg():
             fromlist=['FrankaGym']
             ).FrankaGym(app_launcher.app, sim, scene)
     )
+    register(
+        id='FrankaGymEnvLvl2',
+        entry_point=lambda: 
+        __import__(
+            'envs.franka_gym_lvl2', 
+            fromlist=['FrankaGymLvl2']
+            ).FrankaGymLvl2(app_launcher.app, sim, scene)
+    )

@@ -47,26 +47,3 @@ def train_agent():
 if __name__ == '__main__':
     train_agent()
 
-
-
-
-#     model = PPO(
-#     "MlpPolicy",
-#     env,
-#     learning_rate=0.0003,           # Higher for robotic tasks
-#     n_steps=2048,                 # Good for your setup
-#     batch_size=256,               # Larger for stability
-#     n_epochs=5,                   # Conservative to avoid overfitting
-#     gamma=0.995,                  # Higher for long-horizon tasks
-#     gae_lambda=0.95,              # Good default
-#     target_kl=0.02,              # Prevent policy collapse
-#     ent_coef=0.01,               # Maintain exploration
-#     vf_coef=0.5,                 # Balance value/policy learning
-#     clip_range=0.2,              # Standard for manipulation
-#     max_grad_norm=0.5,           # Gradient clipping for stability
-#     policy_kwargs=dict(
-#         net_arch=[dict(pi=[256, 256, 128], vf=[256, 256, 128])],  # Larger networks
-#         activation_fn=torch.nn.ReLU,
-#     ),
-#     tensorboard_log=logs_dir,
-# )

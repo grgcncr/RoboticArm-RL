@@ -4,15 +4,18 @@ from envs.franka_gym import FrankaGym
 from stable_baselines3.common.monitor import Monitor
 from simapp_cfg import simapp_cfg
 import gymnasium as gym
+from stable_baselines3 import TD3
 
 def test_agent(num_episodes=100):
     # Start the Simulation App
     simapp_cfg()
 
     # Create the environment
-    env = Monitor(gym.make('FrankaGymEnv'))
+    # env = Monitor(gym.make('FrankaGymEnv'))
+    env = Monitor(gym.make('FrankaGymEnvLvl2'))
+
     # Load the trained model
-    model = PPO.load('/home/mushroomgeorge/robotics-rl/checkpoints/model68_3072000_steps.zip', env=env)
+    model = TD3.load('/home/mushroomgeorge/robotics-rl/checkpoints/td3_10_6144000_steps.zip', env=env)
 
     # Run the model for a number of episodes
     for episode in range(num_episodes):
@@ -25,9 +28,10 @@ def test_agent(num_episodes=100):
             action, _states = model.predict(observation=obs, deterministic=True)
              
             # DEBUG: Print action and current observation (first few steps only to avoid spam)
-            if step_count < 5:
-                print(f"Episode {episode+1}, Step {step_count}: Action = {action}")
-                print(f"Episode {episode+1}, Step {step_count}: Obs = {obs}")
+            # if step_count < 5:
+                # print(f"Episode {episode+1}, Step {step_count}: Action = {action}")
+                # print(f"Episode {episode+1}, Step {step_count}: Obs = {obs}")
+            
             # print("action",action)
             obs, reward, terminated, truncated, info = env.step(action)
             # env.render()
